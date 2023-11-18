@@ -1,5 +1,5 @@
-# C-Heart
-Conditional Generative Model for Heart
+# CHeart
+Code for "CHeart: A Conditional Spatio-Temporal Generative Model for Cardiac Anatomy"
 
 
 ## Train
