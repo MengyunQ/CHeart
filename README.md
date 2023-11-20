@@ -4,10 +4,12 @@ CHeart, a novel conditional generative model for 4D cardiac anatomy. By leveragi
 
 ## Train
 train_GenCVAE_Seq.py
+
 more to update
 
 ## Validation
-val_GenCVAE_Seq
+val_GenCVAE_Seq.py
+
 more to update
 
 ## Citation and Acknowledgement
