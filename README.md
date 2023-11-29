@@ -3,6 +3,8 @@ Code for ["CHeart: A Conditional Spatio-Temporal Generative Model for Cardiac An
 
 CHeart, a novel conditional generative model for 4D cardiac anatomy. By leveraging both imaging and non-imaging data, the model is able to generate realistic and dynamic anatomical sequences for the heart, given personalised conditions such as demographic and anthropometric factors.
 
+![architecture](figures/Figure_Main_Network.png)
+
 ## Train
 train_GenCVAE_Seq.py
 
