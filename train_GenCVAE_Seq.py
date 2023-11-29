@@ -20,9 +20,7 @@ import torch.nn.functional as F
 import random
 from textwrap import wrap
 import faulthandler
-from visualize import *
 from loss import *
-from calculate_clinical_features import *
 
 faulthandler.enable()
 
@@ -52,158 +50,6 @@ def VAECELoss(recon_x, x, mu, logvar, disp_seq, beta=1e-2, args = None):
     CE = CE_all / torch.sum(seqweight)
     KLD = -0.5 * torch.mean(1 + logvar - mu.pow(2) - logvar.exp())
     return CE + beta * KLD, CE, KLD
-
-def sample_latent_motion(epoch, args, n=2):
-
-    with torch.no_grad():
-        phenotypes = ['LVV', 'LVM', 'RVV']
-
-        sample = torch.randn(n, z_dim).to(device)
-        age = torch.randint(0, 7, (n,)).to(device)
-        gender = torch.randint(0, 2, (n,)).to(device)
-        height = torch.randint(160, 180, (n,)).to(device)
-        weight = torch.randint(50, 80, (n,)).to(device)
-        sbp = torch.randint(100, 130, (n,)).to(device)
-        recon_batch, disp_seq = model.decode(sample, age, gender, height, weight, sbp, args)
-        recon_batch = recon_batch.cpu()
-        disp_seq = disp_seq.cpu()
-        #plt.style.use('dark_background')
-       # min(seg.size(0), 8)
-        if args.disp:
-            imagetype = 4
-        else:
-            imagetype = 3
-        scale = 5
-        m = n * imagetype + 1  # gt, pred, disp, errormap
-        plt.style.use('default')
-        fig, axs = plt.subplots(nrows=n * m * 2, ncols=10, frameon=True,
-                                gridspec_kw={'wspace': 0.1, 'hspace': 0.1})
-        fig.set_size_inches([10 * scale, n * m * scale])
-        [ax.set_axis_off() for ax in axs.ravel()]
-        gender = gender.cpu().detach().numpy()
-        age = age.cpu().detach().numpy()
-
-        for k in range(0,n):
-            for time in range(0, 10):
-                recon_vol = onehot2label(recon_batch[k, time].cpu().detach().numpy())  # debug
-                recon_view1 = recon_vol[32, :, :]
-                recon_view2 = recon_vol[:, 64, :]
-                recon_view3 = recon_vol[:, :, 64]
-
-                axs[k * m, time].imshow(recon_view1, clim=(0, 4))
-                axs[k * m + 1, time].imshow(recon_view2, clim=(0, 4))
-                axs[k * m + 2, time].imshow(recon_view3, clim=(0, 4))
-                if args.disp:
-                    disp = disp_seq[k, time, 0:2, 32, :, :].cpu().detach().numpy()
-                    # warped grid: ground truth
-                    ax = axs[k * m + 3, time]
-                    plot_warped_grid(ax, disp, interval=8, title="disp_xy", fontsize=20)
-
-
-            for time in range(10, 20):
-                time_axis = time - 10
-                recon_vol = onehot2label(recon_batch[k, time].cpu().detach().numpy())  # debug
-                recon_view1 = recon_vol[32, :, :]
-                recon_view2 = recon_vol[:, 64, :]
-                recon_view3 = recon_vol[:, :, 64]
-
-                axs[k * m + imagetype, time_axis].imshow(recon_view1, clim=(0, 4))
-                axs[k * m + imagetype + 1, time_axis].imshow(recon_view2, clim=(0, 4))
-                axs[k * m + imagetype + 2, time_axis].imshow(recon_view3, clim=(0, 4))
-                # warped grid: ground truth
-                if args.disp:
-                    disp = disp_seq[k, time, 0:2, 32, :, :].cpu().detach().numpy()
-                    ax = axs[k * m + imagetype + 3, time_axis]
-                    plot_warped_grid(ax, disp, interval=8, title="disp_xy", fontsize=20)
-
-
-            # LVV, LVM, RVV cureve
-            time = range(0, 20)
-            Feature_curve = calculate_FeatureCurve(onehot2label(recon_batch[k].cpu().detach().numpy(),axis=1))
-            for idx, phenotype in enumerate(phenotypes):
-                axs[k * m + imagetype * 2, idx].plot(time, np.array(Feature_curve[phenotype]))
-                axs[k * m + imagetype * 2, 0].set_title(f'{phenotype}-pred', fontsize=10)
-
-            if gender[k] == 0:
-                SEX = 'female'
-
-            if gender[k] == 1:
-                SEX = 'male'
-            axs[k * m, 0].set_title(f'{SEX}, {age[k]}', size='small',family='scan-serif')
-
-        writer.add_figure('Latent sampling', fig, epoch)
-
-
-def sample_latent_age(epoch, args=None, n=8):
-
-    with torch.no_grad():
-        # plt.style.use('dark_background')
-        plt.style.use('default')
-        fig, axs = plt.subplots(nrows=6, ncols=n, frameon=False,
-                                gridspec_kw={'wspace': 0.5, 'hspace': 0.05})
-        fig.set_size_inches([n, 6])
-        [ax.set_axis_off() for ax in axs.ravel()]
-        sample = torch.randn(1, z_dim).to(device)
-        gender = torch.randint(0, 2, (1,)).to(device)
-        height = torch.randint(160, 180, (1,)).to(device)
-        weight = torch.randint(50, 80, (1,)).to(device)
-        sbp = torch.randint(100, 130, (1,)).to(device)
-
-        for k in range(0, n):
-            age = torch.from_numpy(np.array([k])).to(device)
-            #age = torch.randint(0, 7, (n,)).to(device)
-            sample_result, disp_seq = model.decode(sample, age, gender, height, weight, sbp, args)
-            gendercopy = gender
-            gendercopy = gendercopy.cpu().detach().numpy()
-            agecopy = age
-            agecopy = agecopy.cpu().detach().numpy()
-            vol_onehot = onehot2label(sample_result[0, 0].cpu().detach().numpy())
-
-            if k ==0:
-                error = np.zeros((64,128,128))
-                vol_onehot_last = vol_onehot
-            else:
-
-                error = vol_onehot-vol_onehot_last
-
-            view1 = vol_onehot[32, :, :]
-            view2 = vol_onehot[:, 64, :]
-            view3 = vol_onehot[:, :, 64]
-            error1 = error[32, :, :]
-            error2 = error[:, 64, :]
-            error3 = error[:, :, 64]
-
-            axs[0, k].imshow(view1, clim=(0, 4))
-            axs[2, k].imshow(view2, clim=(0, 4))
-            axs[4, k].imshow(view3, clim=(0, 4))
-
-            axs[1, k].imshow(error1, clim=(-8, 8),cmap='seismic')
-            axs[3, k].imshow(error2, clim=(-8, 8),cmap='seismic')
-            axs[5, k].imshow(error3, clim=(-8, 8),cmap='seismic')
-
-            if gendercopy[0]== 0:
-                SEX = 'female'
-
-            if gendercopy[0] == 1:
-                SEX = 'male'
-
-            axs[0, k].set_title(f'{agecopy[0]}, {SEX}', size='small',
-                                family='scan-serif')
-
-        writer.add_figure('Latent sampling age', fig, epoch)
-
-
-def shot_latent(epoch, mu, logvar):
-    plt.style.use('dark_background')
-    fig = plt.figure()
-    X_embedded = mu[:, 0:2]
-    sc = plt.scatter(X_embedded[:, 0], X_embedded[:, 1], s=10, c=np.exp(logvar).mean(axis=1))
-    plt.colorbar(sc)
-    plt.axvline(0, color='r')
-    plt.axhline(0, color='r')
-    plt.title('latent space - raw', fontsize=16)
-    writer.add_figure('Latent view', fig, epoch)
-
 
 def train(epoch, beta=1e-2, args=None):
     # train model
@@ -272,73 +118,6 @@ def test(epoch, model=None, beta=1e-2, args=None):
             test_loss += t_loss.item()
             test_CE_loss += CE.item()
             test_KLD_loss += KLD.item()
-            # if batch_idx == 0:
-            #     n = 2  # min(seg.size(0), 8)
-            #     if args.disp:
-            #         imagetype = 4
-            #     else:
-            #         imagetype = 3
-            #     scale = 5
-            #     m = n * imagetype + 1 #gt, pred, disp, errormap
-            #     plt.style.use('default')
-            #     fig, axs = plt.subplots(nrows=n * m * 2, ncols=10, frameon=True,
-            #                             gridspec_kw={'wspace': 0.1, 'hspace': 0.1})
-            #     fig.set_size_inches([10 * scale, n * m * scale])
-            #     [ax.set_axis_off() for ax in axs.ravel()]
-            #
-            #     for k in range(0, n):
-            #         for time in range(0, 10):
-            #             seg_vol = onehot2label(seg[k, time].cpu().detach().numpy())
-            #             recon_vol = onehot2label(recon_batch[k, time].cpu().detach().numpy())  # debug
-            #             dsc = np.mean(np_mean_dice(recon_vol, seg_vol))
-            #
-            #             view1 = seg_vol[32, :, :]
-            #             recon_view1 = recon_vol[32, :, :]
-            #             error = view1 - recon_view1
-            #
-            #
-            #             axs[k * m, time].imshow(view1, clim=(0, 4))
-            #             axs[k * m + 1, time].imshow(recon_view1, clim=(0, 4))
-            #             axs[k * m + 2, time].imshow(error, clim=(-8, 8), cmap='seismic')
-            #             axs[k * m, time].set_title('{:0.2f}'.format(dsc))
-            #             # warped grid: ground truth
-            #             if args.disp:
-            #                 disp = disp_seq[k, time, 0:2, 32, :, :].cpu().detach().numpy()
-            #                 ax = axs[k * m + 3, time]
-            #                 plot_warped_grid(ax, disp, interval=8, title="disp_xy", fontsize=20)
-            #
-            #         for time in range(10, 20):
-            #             seg_vol = onehot2label(seg[k, time].cpu().detach().numpy())
-            #             recon_vol = onehot2label(recon_batch[k, time].cpu().detach().numpy())  # debug
-            #             dsc = np.mean(np_mean_dice(recon_vol, seg_vol))
-            #             view1 = seg_vol[32, :, :]
-            #             recon_view1 = recon_vol[32, :, :]
-            #             error = view1 - recon_view1
-            #
-            #             time_axis = time - 10
-            #
-            #             axs[k * m + imagetype, time_axis].imshow(view1, clim=(0, 4))
-            #             axs[k * m + imagetype + 1, time_axis].imshow(recon_view1, clim=(0, 4))
-            #             axs[k * m + imagetype + 2, time_axis].imshow(error, clim=(-8, 8), cmap='seismic')
-            #             axs[k * m + imagetype, time_axis].set_title('{:0.2f}'.format(dsc))
-            #             # warped grid: ground truth
-            #             if args.disp:
-            #                 disp = disp_seq[k, time, 0:2, 32, :, :].cpu().detach().numpy()
-            #                 ax = axs[k * m + imagetype + 3, time_axis]
-            #                 plot_warped_grid(ax, disp, interval=8, title="disp_xy", fontsize=20)
-            #
-            #         # LVV, LVM, RVV cureve
-            #         time = range(0, 20)
-            #         Feature_curve_gt =calculate_FeatureCurve(seg[k].cpu().detach().numpy())
-            #         Feature_curve_pre = calculate_FeatureCurve(recon_batch[k].cpu().detach().numpy())
-            #
-            #         for idx, fn in enumerate(feature_names):
-            #             axs[k * m + imagetype * 2, idx * 2].plot(time, np.array(Feature_curve_gt[f'{fn}']))
-            #             axs[k * m + imagetype * 2, idx * 2 + 1].plot(time, np.array(Feature_curve_pre[f'{fn}']))
-            #             axs[k * m + imagetype * 2, idx*2].set_title(f'{fn}-gt', fontsize=10)
-            #             axs[k * m + imagetype * 2, idx*2+1].set_title(f'{fn}-pred', fontsize=10)
-            #
-            #         writer.add_figure('Reconstruction', fig, epoch)
     test_loss /= batch_idx+1
     test_CE_loss /= batch_idx + 1
     test_KLD_loss /= batch_idx + 1
@@ -398,19 +177,11 @@ if __name__ == '__main__':
 
     label_num = int(args.label_num)
 
-    if args.mapping == 'none':
-        model_type = f'cvae-{args.model}-seq'
-    else:
-        model_type = f'cvae-{args.model}-seq-{args.mapping}{args.mapping_number}'
+    model_type = f'cvae-{args.model}-seq-{args.mapping}{args.mapping_number}'
 
 
     print(model_type)
-    # Oct4->new, before->Seq_0
-    if args.arch == 'condisp':
-        model = networks.GenCVAE_Seq_dsp_con(z_dim=z_dim, img_size=128, depth=64, label_num=label_num,
-                                             condition=condition)
-    else:
-        model = networks.GenCVAE_Seq(z_dim=z_dim, img_size=128, depth=64, label_num=label_num, condition=condition,args=args)
+    model = networks.GenCVAE_Seq(z_dim=z_dim, img_size=128, depth=64, label_num=label_num, condition=condition,args=args)
 
 
 
@@ -419,12 +190,12 @@ if __name__ == '__main__':
 
     best_model, best_loss = [], 1e10
     # load dataset
-    save_path = '/vol/biomedic3/mq21/code/Results_CHeart'
-    dest_dir = '/vol/biomedic3/mq21/data/cardiac/GenScan/H4D/seg'
-    txt_path = '/vol/biomedic3/mq21/data/cardiac/GenScan/label/train_sequence.txt'
-    train_dataset = HamSegData_Condition_4Dvolume(dest_dir ,txt_path, debug=False)
+    save_path = './Results_CHeart'
+    dest_dir = './seg'
+    txt_path = './label/train_sequence.txt'
+    train_dataset = HamSegData_Condition_4Dvolume(dest_dir,txt_path, debug=False)
 
-    txt_path = '/vol/biomedic3/mq21/data/cardiac/GenScan/label/val_sequence.txt'
+    txt_path = './label/val_sequence.txt'
     test_dataset =  HamSegData_Condition_4Dvolume(dest_dir, txt_path, debug=False)
 
     train_dataloader = DataLoader(train_dataset, batch_size, shuffle=True, num_workers=2)
@@ -433,16 +204,10 @@ if __name__ == '__main__':
     # loss function and optimizer
     optimizer = optim.Adam(model.parameters(), lr=lr)
 
-    if 'after' in args.lstmpos:
-        model_name = '{:s}_zdim_{:d}_epoch_{:d}_beta_{:.2E}_batch_{:d}_lr_{:.2E}_loss_{:s}.pt'.format(model_type, z_dim,
-                                                                                                      N, beta,
-                                                                                                      batch_size, lr,
-                                                                                                      loss_type)
-    else:
-        model_name = '{:s}_zdim_{:d}_epoch_{:d}_beta_{:.2E}_batch_{:d}_lr_{:.2E}_loss_{:s}_ConSeq{:s}.pt'.format(
+    model_name = '{:s}_zdim_{:d}_epoch_{:d}_beta_{:.2E}_batch_{:d}_lr_{:.2E}_loss_{:s}_ConSeq{:s}.pt'.format(
             model_type, z_dim, N, beta, batch_size, lr, loss_type, args.lstmpos)
     print(model_name)
-    folder = 'cvae-seq-2022-retry'# save model after 300, every 25
+    folder = 'cvae-seq'
     logdir = os.path.join(f'{save_path}/log/{folder}/', model_name[0:-3])
     writer = SummaryWriter(logdir)
     writer.add_hparams({'type': mzhodel_type, 'z_dim': z_dim, 'epochs': N, 'beta': beta}, {})
@@ -465,24 +230,5 @@ if __name__ == '__main__':
             epoch_model = copy.deepcopy(model)
             torch.save(epoch_model.state_dict(),
                        os.path.join(modelpath, f'epoch{epoch}.pt'))
-            # setup_dir(f'./models/{folder}/')
-            # torch.save(best_model.state_dict(),
-            #            os.path.join(f'./models/{folder}/', model_name))
-
-        # segID = '14CD03161'
-        # image_name = '{0}/{1}_{2:02d}.npy'.format(dest_dir, segID, 0)
-        # seg = np.load(image_name, allow_pickle=True)
-        # ED = label2onehot(seg)
-        # sample_latent_motion(epoch, args, 2)
-        # sample_latent_age(epoch, args, 8)
-        # # sample_latent(epoch, args, ED, 1)
-        # shot_latent(epoch, test_mu, test_logvar)
-        #
-        # writer.add_scalars('Loss', {'train': train_loss,
-        #                             'test': test_loss}, epoch)
-        # writer.add_scalars('CE-Loss', {'train': train_CE_loss,
-        #                             'test': test_CE_loss}, epoch)
-        # writer.add_scalars('KLD-Loss', {'train': train_KLD_loss,
-        #                             'test': test_KLD_loss}, epoch)
 
     writer.close()
